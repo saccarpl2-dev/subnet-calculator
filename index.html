@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kalkulator Subnet & VLSM</title>
+<style>
+:root{--bg:#fff;--fg:#202124;--mut:#5f6368;--acc:#1a73e8;--line:#dadce0;--err:#d93025;--card:#f8f9fa}
+@media(prefers-color-scheme:dark){:root{--bg:#202124;--fg:#e8eaed;--mut:#9aa0a6;--acc:#8ab4f8;--line:#3c4043;--err:#f28b82;--card:#292a2d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:24px 16px}
+h1{font-size:1.5rem;font-weight:500;margin:0 0 4px}p.sub{color:var(--mut);margin:0 0 20px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px}
+.tabs button{background:none;border:0;padding:10px 16px;font:inherit;color:var(--mut);cursor:pointer;border-bottom:3px solid transparent}
+.tabs button[aria-selected=true]{color:var(--acc);border-color:var(--acc)}
+label{display:block;font-size:.875rem;color:var(--mut);margin:12px 0 4px}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;background:var(--bg);color:var(--fg)}
+.row{display:flex;gap:12px}.row>div:first-child{flex:1}.row>div:last-child{width:110px}
+button.go,button.add{margin-top:16px;padding:10px 20px;border:0;border-radius:20px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
+button.add{background:none;color:var(--acc);border:1px solid var(--line);margin-top:8px;padding:6px 14px}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.err{color:var(--err);font-size:.875rem;min-height:1.3em;margin-top:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:16px}
+.card dl{display:grid;grid-template-columns:140px 1fr;gap:6px;margin:0}dt{color:var(--mut)}dd{margin:0;font-family:ui-monospace,monospace}
+.empty{color:var(--mut);margin-top:16px}
+.req{display:flex;gap:8px;margin-bottom:8px}.req button{border:1px solid var(--line);background:none;color:var(--fg);border-radius:8px;cursor:pointer;width:40px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;font-family:ui-monospace,monospace;font-size:.8125rem}
+th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+[hidden]{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Kalkulator Subnet & VLSM</h1>
+<p class="sub">Hitung alamat jaringan IPv4 dan bagi jaringan sesuai kebutuhan host.</p>
+<div class="tabs" role="tablist">
+  <button role="tab" id="t1" aria-selected="true">Subnet</button>
+  <button role="tab" id="t2" aria-selected="false">VLSM</button>
+</div>
+
+<section id="p1">
+  <div class="row">
+    <div><label for="ip">Alamat IP</label><input id="ip" placeholder="172.16.5.130" autocomplete="off"></div>
+    <div><label for="pre">Prefix (0-32)</label><input id="pre" type="number" min="0" max="32" placeholder="25"></div>
+  </div>
+  <div class="err" id="e1" role="alert"></div>
+  <button class="go" id="g1">Hitung</button>
+  <div id="r1"><p class="empty">Masukkan IP dan prefix, lalu pilih Hitung.</p></div>
+</section>
+
+<section id="p2" hidden>
+  <label for="net">Network (CIDR)</label><input id="net" placeholder="192.168.1.0/24" autocomplete="off">
+  <label>Kebutuhan host per subnet</label>
+  <div id="reqs"></div>
+  <button class="add" id="add">Tambah subnet</button>
+  <div class="err" id="e2" role="alert"></div>
+  <button class="go" id="g2">Alokasikan</button>
+  <div id="r2"><p class="empty">Isi network dan kebutuhan host, lalu pilih Alokasikan.</p></div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function tab(n){[1,2].forEach(i=>{$('p'+i).hidden=i!==n;$('t'+i).setAttribute('aria-selected',i===n)})}
+$('t1').onclick=()=>tab(1);$('t2').onclick=()=>tab(2);
+async function call(url,opt){
+  const r=await fetch(url,opt);const d=await r.json();
+  if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:'Input tidak valid');
+  return d;
+}
+$('g1').onclick=async()=>{
+  $('e1').textContent='';
+  try{
+    const d=await call('/api/subnet?ip='+encodeURIComponent($('ip').value)+'&prefix='+encodeURIComponent($('pre').value));
+    const L=[['Subnet mask','mask'],['Network','network'],['Broadcast','broadcast'],['Host pertama','first_host'],['Host terakhir','last_host'],['Jumlah host','usable_hosts']];
+    $('r1').innerHTML='<div class="card"><dl>'+L.map(([n,k])=>`<dt>${n}</dt><dd>${d[k]===null?'- (tidak ada)':esc(d[k])}</dd>`).join('')+'</dl></div>';
+  }catch(e){$('e1').textContent=e.message}
+};
+function addReq(v=''){
+  const d=document.createElement('div');d.className='req';
+  d.innerHTML='<input type="number" min="1" placeholder="Jumlah host" aria-label="Kebutuhan host"><button aria-label="Hapus">×</button>';
+  d.firstChild.value=v;d.lastChild.onclick=()=>d.remove();$('reqs').appendChild(d);
+}
+$('add').onclick=()=>addReq();[100,50].forEach(addReq);
+$('g2').onclick=async()=>{
+  $('e2').textContent='';
+  try{
+    const keb=[...document.querySelectorAll('#reqs input')].map(i=>i.value.trim()).filter(Boolean).map(Number);
+    const d=await call('/api/vlsm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({network:$('net').value.trim(),kebutuhan_host:keb})});
+    $('r2').innerHTML='<div class="wrap card"><table><tr><th>Kebutuhan</th><th>Network</th><th>Mask</th><th>Rentang host</th><th>Broadcast</th><th>Host</th></tr>'+
+      d.map(b=>`<tr><td>${b.kebutuhan}</td><td>${esc(b.network_cidr)}</td><td>${esc(b.mask)}</td><td>${esc(b.first_host)} - ${esc(b.last_host)}</td><td>${b.broadcast===null?'-':esc(b.broadcast)}</td><td>${b.usable_hosts}</td></tr>`).join('')+'</table></div>';
+  }catch(e){$('e2').textContent=e.message}
+};
+</script>
+</body>
+</html>
